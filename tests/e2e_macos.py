@@ -137,7 +137,7 @@ class ZshPluginTest(unittest.TestCase):
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home, True)
         conf = dict(BHB_INTERVAL_MINUTES='0.05', BHB_REST_SECONDS='1', BHB_SPEED='4', BHB_IDLE_SECONDS='0',
-                    BHB_TEST_SCREEN=SAMPLE, BHB_STATE_DIR=os.path.join(home, 'state'))
+                    BHB_TEST_SCREEN=SAMPLE, BHB_STATE_DIR=os.path.join(home, 'state'), BHB_DEBUG='1')
         conf.update(settings)
         with open(os.path.join(home, '.zshrc'), 'w') as f:
             f.write("PS1='$ '\nunsetopt PROMPT_SP\n")
@@ -152,6 +152,15 @@ class ZshPluginTest(unittest.TestCase):
         self.home = home
         return t
 
+    def logs(self):
+        out = []
+        for name in ('state', 'debug.log', 'error.log'):
+            p = os.path.join(self.home, 'state', name)
+            if os.path.exists(p):
+                with open(p) as f:
+                    out.append('--- %s:\n%s' % (name, f.read()[-3000:]))
+        return '\n'.join(out)
+
     def run_cmd(self, t, cmd, until):
         t.send(cmd.encode() + b'\r')
         self.assertTrue(t.wait_for(lambda: until in t.screen.text(), 10), 'no %r:\n%s' % (until, t.screen.text()))
@@ -160,12 +169,13 @@ class ZshPluginTest(unittest.TestCase):
         t = self.start()
         self.run_cmd(t, 'echo hello-world', 'hello-world')
         before = t.screen.text()
-        self.assertTrue(t.wait_for(lambda: t.screen.in_alt, 15), 'no break from the timer:\n' + t.screen.text())
+        self.assertTrue(t.wait_for(lambda: t.screen.in_alt, 15), 'no break from the timer:\n' + t.screen.text() + self.logs())
         t.pump(0.5)
         self.assertNotEqual(t.screen.text(), before)
         self.assertTrue(t.wait_for(lambda: not t.screen.in_alt, 15), 'break did not end')
-        t.pump(0.5)
+        t.pump(1.5)
         self.assertEqual(t.screen.text(), before)
+        self.assertIn("break result: 'done'", self.logs())
         self.run_cmd(t, 'echo still-works', 'still-works')
 
     def test_key_ends_the_break_and_is_not_typed(self):
@@ -176,6 +186,7 @@ class ZshPluginTest(unittest.TestCase):
         self.assertTrue(t.wait_for(lambda: 'Rest your eyes' in t.screen.text(), 15), 'no rest:\n' + t.screen.text())
         t.send(b'x')
         self.assertTrue(t.wait_for(lambda: not t.screen.in_alt, 10), 'key did not end the break')
+        t.pump(1.5)
         self.run_cmd(t, 'echo after-break', 'after-break')
         self.assertNotIn('xecho', t.screen.text())
         self.assertIn('ready', t.screen.text())
@@ -184,8 +195,9 @@ class ZshPluginTest(unittest.TestCase):
         t = self.start(BHB_INTERVAL_MINUTES='600')
         for effect in ('wormhole', 'supernova', 'dust'):
             t.send(('bhb-now %s\r' % effect).encode())
-            self.assertTrue(t.wait_for(lambda: t.screen.in_alt, 15), effect)
-            self.assertTrue(t.wait_for(lambda: not t.screen.in_alt, 15), effect)
+            self.assertTrue(t.wait_for(lambda: t.screen.in_alt, 15), effect + self.logs())
+            self.assertTrue(t.wait_for(lambda: not t.screen.in_alt, 15), effect + self.logs())
+            t.pump(1.5)                    # the plugin waits for the renderer process to exit
 
     def test_day_filter_stops_breaks(self):
         t = self.start(BHB_ACTIVE_DAYS='Nope')

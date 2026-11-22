@@ -47,12 +47,21 @@ typeset -g BHB_DIR=${${(%):-%x}:A:h}
 : ${BHB_COLORS:=256}                    # Terminal.app: 256; truecolor for other terminals
 : ${BHB_FRONT_ONLY:=1}                  # only when this tab is in front (else: try again later)
 : ${BHB_STATE_DIR:=${XDG_CACHE_HOME:-$HOME/.cache}/blackhole-break}
+: ${BHB_DEBUG:=0}                       # 1 = write decisions to $BHB_STATE_DIR/debug.log
 
 [[ -d $BHB_STATE_DIR ]] || command mkdir -p -- $BHB_STATE_DIR 2>/dev/null || return 0
+[[ -e $BHB_STATE_DIR/lock ]] || : >> $BHB_STATE_DIR/lock     # zsystem flock needs the file
 
 typeset -gF _bhb_last_input=$EPOCHREALTIME _bhb_cmd_start=0 _bhb_extra=0 _bhb_next_try=0
 typeset -gi _bhb_busy=0 _bhb_due=0 _bhb_owner=0 _bhb_counting=1 _bhb_errors=0
 typeset -gA _bhb_st
+
+_bhb_debug() {
+  (( BHB_DEBUG )) || return 0
+  local ts
+  strftime -s ts '%H:%M:%S' $EPOCHSECONDS
+  print -r -- "$ts [$TTY] $*" >> $BHB_STATE_DIR/debug.log
+}
 
 _bhb_mv() { if (( $+builtins[zf_mv] )); then zf_mv -f "$@"; else command mv -f "$@"; fi }
 _bhb_rm() { if (( $+builtins[zf_rm] )); then zf_rm -f "$@" 2>/dev/null; else command rm -f "$@" 2>/dev/null; fi }
@@ -105,7 +114,8 @@ _bhb_in_schedule() {
 _bhb_state_update() {
   local lockfd file=$BHB_STATE_DIR/state line k out=
   if (( $+builtins[zsystem] )); then
-    zsystem flock -t 1 -f lockfd $BHB_STATE_DIR/lock 2>/dev/null || return 1
+    # best effort: without the lock two tabs can lose one tick, nothing worse
+    zsystem flock -t 1 -f lockfd $BHB_STATE_DIR/lock 2>/dev/null || { lockfd=; _bhb_debug "lock failed"; }
   fi
   _bhb_st=()
   if [[ -r $file ]]; then
@@ -148,6 +158,7 @@ _bhb_tick_edit() {
   _bhb_st[paused_until]=$paused
   _bhb_due=$(( counting && active >= BHB_INTERVAL_MINUTES * 60 ))
   [[ ${_bhb_st[owner]} == $TTY ]] && _bhb_owner=1 || _bhb_owner=0
+  _bhb_debug "tick active=$active dt=$dt counting=$counting due=$_bhb_due owner=$_bhb_owner"
 }
 
 _bhb_reset_edit() {
@@ -185,6 +196,7 @@ _bhb_break() {
     fi
   done
   [[ -r $result ]] && res=$(<$result)
+  _bhb_debug "break result: '$res'"
   _bhb_rm $stop $result
   case $res in
     done|ended)

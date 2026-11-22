@@ -608,7 +608,7 @@ function run(argv) {
     fps: Number(o.fps), holeScale: Number(o.scale), colors: o.colors, message: o.message,
     seed: Math.floor(Math.random() * 4294967296)
   });
-  fh.closeFile();
+  fh.closeFile;                      // JXA: an ObjC method with no arguments is a property
   writeFile(o.result, result);
   return result;
 }
