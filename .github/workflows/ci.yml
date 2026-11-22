@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Engine tests (Node)
+        run: node --test
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: zsh syntax
+        run: zsh -n blackhole-break.plugin.zsh
+      - name: Engine tests (Node)
+        run: node --test
+      - name: End-to-end (osascript JavaScript engine, zsh plugin in a pseudo-terminal)
+        run: |
+          python3 -m venv /tmp/venv
+          /tmp/venv/bin/pip install --quiet pyte
+          /tmp/venv/bin/python tests/e2e_macos.py

@@ -1,0 +1,29 @@
+gowtham@mac:~/Code_Repos/temporal-worker$ git log --oneline -4
+9309cd0 (HEAD -> main) Add retry budget to activity workers
+eab76ca Shard task queues by region
+71b61a6 Bump temporal SDK to 1.26
+4c2e9f1 Fix flaky workflow replay test
+gowtham@mac:~/Code_Repos/temporal-worker$ go test ./...
+ok    github.com/acme/worker/activities      0.412s
+ok    github.com/acme/worker/workflows       1.087s
+ok    github.com/acme/worker/internal/shard  0.093s
+--- FAIL: TestReplayDeterminism (0.21s)
+    replay_test.go:88: history mismatch at event 42
+FAIL    github.com/acme/worker/replay          0.336s
+gowtham@mac:~/Code_Repos/temporal-worker$ ls -la
+drwxr-xr-x  12 gowtham  staff   384 Nov 21 17:40 .
+-rw-r--r--   1 gowtham  staff  1203 Nov 21 17:12 go.mod
+-rw-r--r--   1 gowtham  staff  9921 Nov 21 17:12 go.sum
+drwxr-xr-x   6 gowtham  staff   192 Nov 21 16:58 activities
+drwxr-xr-x   5 gowtham  staff   160 Nov 21 16:58 workflows
+-rwxr-xr-x   1 gowtham  staff  2048 Nov 21 17:30 run-local.sh
+gowtham@mac:~/Code_Repos/temporal-worker$ cat workflows/order.go | head -8
+func OrderWorkflow(ctx workflow.Context, o Order) error {
+    ao := workflow.ActivityOptions{StartToCloseTimeout: 10 * time.Second}
+    ctx = workflow.WithActivityOptions(ctx, ao)
+    if err := workflow.ExecuteActivity(ctx, Reserve, o).Get(ctx, nil); err != nil {
+        return err
+    }
+    return workflow.ExecuteActivity(ctx, Charge, o).Get(ctx, nil)
+}
+gowtham@mac:~/Code_Repos/temporal-worker$ 
